@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:16
+
+    environment:
+      POSTGRES_USER: chatuser
+      POSTGRES_PASSWORD: chatpass
+      POSTGRES_DB: chatdb
+
+    ports:
+      - "5432:5432"
