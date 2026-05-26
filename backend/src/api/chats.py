@@ -7,6 +7,8 @@ from src.database.database import AsyncSessionLocal
 from src.models.chat import Chat
 from src.schemas.chat import ChatCreate
 from src.auth.dependencies import get_current_user
+from src.models.member import ChatMember
+
 
 
 router = APIRouter(prefix="/chats")
@@ -28,7 +30,18 @@ async def create_chat(
     await db.commit()
     await db.refresh(chat)
     
-    return chat
+    member = ChatMember(
+        chat_id=chat.id,
+        user_id=user.id,
+    )
+
+    db.add(member)
+    await db.commit()
+
+    return {
+        "id": chat.id,
+        "name": chat.name,
+    }
 
 
 @router.get("")

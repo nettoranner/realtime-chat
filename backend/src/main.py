@@ -1,6 +1,28 @@
-def main():
-    print("Hello from backend!")
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.api.messages import router as messages_router
+from src.api.auth import router as auth_router
+from src.api.chats import router as chats_router
+
+from src.websocket.routes import router as ws_router
 
 
-if __name__ == "__main__":
-    main()
+app = FastAPI(title="Realtime Chat")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router)
+app.include_router(chats_router)
+app.include_router(messages_router)
+app.include_router(ws_router)
+
+@app.get("/")
+async def root():
+    return {"message": "Application running"}

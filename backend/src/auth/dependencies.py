@@ -1,13 +1,11 @@
 from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer
 from jose import jwt, JWTError
 
 from src.core.config import settings
 
 
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="auth/login"
-)
+oauth2_scheme = HTTPBearer()
 
 
 async def get_current_user(
@@ -15,7 +13,7 @@ async def get_current_user(
 ):
     try:
         payload = jwt.decode(
-            token,
+            token.credentials,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
         )

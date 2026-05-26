@@ -2,11 +2,13 @@ from jose import jwt,JWTError
 
 from fastapi import APIRouter, status, WebSocket, WebSocketDisconnect
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.websocket.manager import manager
 from src.database.database import AsyncSessionLocal
 from src.models.message import Message
+from src.models.member import ChatMember
 from src.core.config import settings
 
 
@@ -37,6 +39,17 @@ async def get_user_from_token(token: str):
         return None
 
 
+async def is_chat_member(db: AsyncSession, chat_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        select(ChatMember).where(
+            ChatMember.chat_id == chat_id,
+            ChatMember.user_id == user_id,
+        )
+    )
+
+    return result.scalar_one_or_none() is not None
+
+
 @router.websocket("/ws/{chat_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -52,16 +65,23 @@ async def websocket_endpoint(
 
     user_id = await get_user_from_token(token)
 
+    async with AsyncSessionLocal() as db:
+
+        allowed = await is_chat_member(db, chat_id, user_id)
+
+        if not allowed:
+            await websocket.close(code=1008)
+            return
+
     if not user_id:
         await websocket.close(
             code=status.WS_1008_POLICY_VIOLATION
         )
         return
 
-    await manager.connect(chat_id, websocket)
+    await manager.connect(chat_id, user_id, websocket)
 
     async with AsyncSessionLocal() as db:
-
         try:
             while True:
                 data = await websocket.receive_json()
@@ -73,10 +93,7 @@ async def websocket_endpoint(
 
                 content = content.strip()
 
-                if len(content) == 0:
-                    continue
-
-                if len(content) > 2000:
+                if len(content) == 0 or len(content) > 2000:
                     continue
 
                 message = Message(
@@ -86,9 +103,7 @@ async def websocket_endpoint(
                 )
 
                 db.add(message)
-
                 await db.commit()
-
                 await db.refresh(message)
 
                 response_data = {
@@ -98,31 +113,20 @@ async def websocket_endpoint(
                     "content": message.content,
                 }
 
-                await manager.broadcast(
-                    chat_id,
-                    response_data,
-                )
+                await manager.broadcast(chat_id, response_data)
 
         except WebSocketDisconnect:
-            manager.disconnect(
-                chat_id,
-                websocket,
-            )
+            manager.disconnect(chat_id, user_id)
 
             await manager.broadcast(
                 chat_id,
                 {
                     "system": True,
-                    "message": f"User {user_id} disconnected"
+                    "message": f"User {user_id} disconnected",
                 },
             )
 
         except Exception as e:
-            manager.disconnect(
-                chat_id,
-                websocket,
-            )
-
+            manager.disconnect(chat_id, user_id)
             print("WebSocket error:", e)
-
             await websocket.close()
